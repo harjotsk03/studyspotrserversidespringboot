@@ -1,0 +1,10 @@
+/mvnw text eol=lf
+*.cmd text eol=crlf
+
+# Treat all text files as text and normalize line endings to LF
+* text=auto
+
+# Explicitly declare line endings for specific file types
+*.sh text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
