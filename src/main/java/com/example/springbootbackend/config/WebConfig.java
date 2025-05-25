@@ -14,7 +14,12 @@ public class WebConfig {
 			@Override
 			public void addCorsMappings(@NonNull CorsRegistry registry) {
 				registry.addMapping("/**")
-						.allowedOrigins("http://localhost:3000")
+						.allowedOrigins(
+							"http://localhost:3000", 
+							"https://studyspotrclientsidenext.vercel.app",
+							"https://studyspotrclientsidenext-harjot-singhs-projects.vercel.app",
+							"https://studyspotrclientsidenext-git-main-harjot-singhs-projects.vercel.app"
+						)
 						.allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
 						.allowedHeaders("*")
 						.allowCredentials(true);
