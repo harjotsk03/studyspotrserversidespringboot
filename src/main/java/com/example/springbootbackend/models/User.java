@@ -3,6 +3,8 @@ package com.example.springbootbackend.models;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import com.example.springbootbackend.utils.VerificationTokenUtil;
+
 import java.util.*;
 
 @Document(collection = "users")
@@ -30,6 +32,7 @@ public class User {
     private String authProvider; // e.g., "email", "google", etc.
     private List<String> roles = new ArrayList<>(Collections.singletonList("user"));
     private Date lastLogin;
+    private VerificationData verificationData;
 
     private List<String> badges = new ArrayList<>();
     private String rank; // e.g., Bronze, Silver
@@ -194,4 +197,7 @@ public class User {
 
     public Date getDeletedAt() { return deletedAt; }
     public void setDeletedAt(Date deletedAt) { this.deletedAt = deletedAt; }
+
+    public void setVerificationData(VerificationData verificationData){this.verificationData = verificationData;}
+    public VerificationData getVerificationData(){return this.verificationData;}
 }

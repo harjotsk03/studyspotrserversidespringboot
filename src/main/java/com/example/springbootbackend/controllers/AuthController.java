@@ -1,10 +1,13 @@
 package com.example.springbootbackend.controllers;
 
 import com.example.springbootbackend.models.User;
+import com.example.springbootbackend.models.VerificationData;
 import com.example.springbootbackend.repositories.UserRepository;
 import com.example.springbootbackend.security.JwtUtil;
 import com.example.springbootbackend.security.LogInDTO;
 import com.example.springbootbackend.security.UserDTO;
+import com.example.springbootbackend.services.EmailService;
+import com.example.springbootbackend.utils.VerificationTokenUtil;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -12,12 +15,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 
 @RestController
 @RequestMapping("/auth")
@@ -29,8 +34,10 @@ public class AuthController {
     private PasswordEncoder passwordEncoder;
     @Autowired
     private JwtUtil jwtUtil;
+    @Autowired
+    private EmailService emailService;
 
-    @PostMapping("/register")
+@PostMapping("/register")
 public ResponseEntity<?> registerUser(@RequestBody User user) {
     if (user.getEmail() == null || user.getEmail().isBlank()) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email is required!");
@@ -92,13 +99,19 @@ public ResponseEntity<?> registerUser(@RequestBody User user) {
     user.setActivePoints(0);
     user.setTotalPoints(0);
 
+    String code = String.format("%06d", new Random().nextInt(999999));
+    String jwt = VerificationTokenUtil.generateVerificationToken("empty", code);
+
+    VerificationData verificationData = new VerificationData(code, jwt, System.currentTimeMillis());
+    user.setVerificationData(verificationData);
+
     user.setUpdatedAt(new Date());
 
     userRepository.save(user);
     String token = jwtUtil.generateToken(user.getEmail());
 
     return ResponseEntity.status(HttpStatus.CREATED).body(
-            Map.of("message", "Account created successfully!", "token", token));
+    Map.of("message", "Account created successfully!", "token", token));
 }
 
 
@@ -153,4 +166,96 @@ public ResponseEntity<?> loginUser(@RequestBody LogInDTO loginRequest) {
 
         return ResponseEntity.ok(userDTO);
     }
+
+    @GetMapping("/sendemailcode")
+    public ResponseEntity<?> testEmail(@RequestParam String email) {
+        Optional<User> userOpt = userRepository.findByEmail(email);
+
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found.");
+        }
+
+        User user = userOpt.get();
+
+        // Generate verification code and token
+        String code = String.format("%06d", new Random().nextInt(999999));
+        String jwt = VerificationTokenUtil.generateVerificationToken(user.getEmail(), code);
+
+        // Store verification data on user
+        VerificationData verificationData = new VerificationData(code, jwt, System.currentTimeMillis());
+        user.setVerificationData(verificationData);
+        userRepository.save(user);
+
+        // Send email
+        try {
+            emailService.sendPasswordResetEmail(user.getEmail(), user.getUsername(), code);
+            return ResponseEntity.ok(Map.of("message", "Verification email sent."));
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to send email."));
+        }
+    }
+
+    @PostMapping("/verifycode")
+    public ResponseEntity<?> verifyCode(@RequestBody Map<String, String> payload) {
+        String email = payload.get("email");
+        String code = payload.get("code");
+        System.out.println(email);
+        System.out.println(code);
+
+        if (email == null || code == null || email.isBlank() || code.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Email and code are required"));
+        }
+
+
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        System.out.println(userOpt);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "User not found"));
+        }
+
+        User user = userOpt.get();
+        VerificationData data = user.getVerificationData();
+
+        if (data == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("No code has been requested.");
+        }
+
+        // Check if code matches
+        if (!code.equals(data.getCode())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Invalid code"));
+        }
+
+        // Validate JWT
+        boolean isValid = VerificationTokenUtil.validateToken(data.getJwt(), email, code);
+        if (!isValid) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Verification code has expired"));
+        }
+
+        return ResponseEntity.ok(Map.of("jwt", data.getJwt()));
+    }
+
+    @PostMapping("/validate-token")
+    public ResponseEntity<?> validateVerificationToken(@RequestBody Map<String, String> payload) {
+        String token = payload.get("token");
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Token is required"));
+        }
+
+        try {
+            boolean isValid = VerificationTokenUtil.isTokenValid(token);
+            if (!isValid) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Token is invalid or expired"));
+            }
+            return ResponseEntity.ok(Map.of("message", "Token is valid"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to validate token"));
+        }
+    }
+
+
 }
