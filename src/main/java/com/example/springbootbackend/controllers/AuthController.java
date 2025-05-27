@@ -257,5 +257,36 @@ public ResponseEntity<?> loginUser(@RequestBody LogInDTO loginRequest) {
         }
     }
 
+    @PostMapping("/resetpassword")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> payload) {
+        String email = payload.get("email");
+        String newPassword = payload.get("newPassword");
+
+        if (email == null || newPassword == null || email.isBlank() || newPassword.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Email and new password are required"));
+        }
+
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "User not found"));
+        }
+
+        User user = userOpt.get();
+
+        // ✅ Hash the new password and update the user
+        String hashedPassword = passwordEncoder.encode(newPassword);
+        user.setPassword(hashedPassword);
+
+        // ✅ Save the updated user
+        userRepository.save(user);
+
+        // Optional: Return a new JWT token or success message
+        String token = jwtUtil.generateToken(user.getEmail());
+        return ResponseEntity.ok(Map.of("jwt", token));
+    }
+
+
 
 }
